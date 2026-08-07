@@ -33,46 +33,220 @@ async def main():
 
         print("Page loaded")
 
-        # ------------------------------------------------
-        # پیدا کردن تمام عناصر مربوط به عدد 28
-        # ------------------------------------------------
+        # --------------------------------------------------
+        # تمام متن صفحه
+        # --------------------------------------------------
 
-        print("Searching for day 28...")
+        text = await page.locator("body").inner_text()
 
-        elements_28 = page.get_by_text(
-            "۲۸",
-            exact=True
-        )
+        print("\n===== SEARCH RESULTS =====")
 
-        count_28 = await elements_28.count()
+        for word in ["۲۸", "28", "مرداد", "1405", "۱۴۰۵"]:
 
-        print("Number of elements containing 28:", count_28)
+            print(
+                f"Searching for [{word}]:",
+                text.count(word)
+            )
 
-        for i in range(count_28):
+        # --------------------------------------------------
+        # عناصر دارای aria-label
+        # --------------------------------------------------
+
+        print("\n===== ARIA LABELS =====")
+
+        elements = page.locator("[aria-label]")
+
+        count = await elements.count()
+
+        print("Total aria-label elements:", count)
+
+        for i in range(min(count, 300)):
 
             try:
 
-                element = elements_28.nth(i)
+                el = elements.nth(i)
 
-                print(
-                    "28 element",
-                    i,
-                    "visible:",
-                    await element.is_visible()
+                label = await el.get_attribute("aria-label")
+
+                if label:
+
+                    label_normalized = (
+                        label
+                        .replace("۲", "2")
+                        .replace("۸", "8")
+                    )
+
+                    if (
+                        "28" in label_normalized
+                        or
+                        "مرداد" in label
+                        or
+                        "1405" in label
+                        or
+                        "۱۴۰۵" in label
+                    ):
+
+                        print(
+                            f"ARIA {i}: {label}"
+                        )
+
+            except Exception:
+                pass
+
+        # --------------------------------------------------
+        # عناصر دارای data-* attributes
+        # --------------------------------------------------
+
+        print("\n===== DATA ATTRIBUTES =====")
+
+        elements = page.locator(
+            "[data-date], "
+            "[data-day], "
+            "[data-value], "
+            "[data-testid]"
+        )
+
+        count = await elements.count()
+
+        print(
+            "Potential date elements:",
+            count
+        )
+
+        for i in range(min(count, 300)):
+
+            try:
+
+                el = elements.nth(i)
+
+                tag = await el.evaluate(
+                    "(e) => e.tagName"
                 )
 
-            except Exception as e:
+                text_value = (
+                    await el.inner_text()
+                ).strip()
 
-                print("Error:", e)
+                date_value = (
+                    await el.get_attribute(
+                        "data-date"
+                    )
+                )
 
-        # ------------------------------------------------
-        # screenshot
-        # ------------------------------------------------
+                day_value = (
+                    await el.get_attribute(
+                        "data-day"
+                    )
+                )
 
-        await page.screenshot(
-            path="calendar_test.png",
-            full_page=True
-        )
+                value = (
+                    await el.get_attribute(
+                        "data-value"
+                    )
+                )
+
+                testid = (
+                    await el.get_attribute(
+                        "data-testid"
+                    )
+                )
+
+                combined = (
+                    f"{text_value} "
+                    f"{date_value} "
+                    f"{day_value} "
+                    f"{value} "
+                    f"{testid}"
+                )
+
+                normalized = (
+                    combined
+                    .replace("۲", "2")
+                    .replace("۸", "8")
+                    .replace("۰", "0")
+                    .replace("۱", "1")
+                    .replace("۴", "4")
+                    .replace("۵", "5")
+                )
+
+                if (
+                    "28" in normalized
+                    or
+                    "1405" in normalized
+                    or
+                    "05" in normalized
+                ):
+
+                    print(
+                        f"{i}: "
+                        f"tag={tag}, "
+                        f"text={text_value}, "
+                        f"date={date_value}, "
+                        f"day={day_value}, "
+                        f"value={value}, "
+                        f"testid={testid}"
+                    )
+
+            except Exception:
+                pass
+
+        # --------------------------------------------------
+        # دکمه‌های تقویم
+        # --------------------------------------------------
+
+        print("\n===== BUTTONS =====")
+
+        buttons = page.locator("button")
+
+        count = await buttons.count()
+
+        print("Total buttons:", count)
+
+        for i in range(count):
+
+            try:
+
+                button = buttons.nth(i)
+
+                txt = (
+                    await button.inner_text()
+                ).strip()
+
+                aria = await button.get_attribute(
+                    "aria-label"
+                )
+
+                title = await button.get_attribute(
+                    "title"
+                )
+
+                if txt or aria or title:
+
+                    print(
+                        f"BUTTON {i}: "
+                        f"text=[{txt}] "
+                        f"aria=[{aria}] "
+                        f"title=[{title}]"
+                    )
+
+            except Exception:
+                pass
+
+        # --------------------------------------------------
+        # ذخیره HTML صفحه برای بررسی
+        # --------------------------------------------------
+
+        html = await page.content()
+
+        with open(
+            "jajiga_page.html",
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            f.write(html)
+
+        print("\nHTML saved.")
 
         await browser.close()
 
