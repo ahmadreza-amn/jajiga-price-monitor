@@ -34,138 +34,165 @@ async def main():
         print("Page loaded")
 
         # -----------------------------------------
-        # باز کردن فهرست تعداد نفرات
+        # انتخاب 4 نفر
         # -----------------------------------------
 
         guest_input = page.locator(
             '[data-test="room-booking-guests"]'
         )
 
-        print(
-            "Guest input count:",
-            await guest_input.count()
-        )
-
         await guest_input.click()
-
-        await page.wait_for_timeout(500)
-
-        # -----------------------------------------
-        # پیدا کردن گزینه 4 نفر
-        # -----------------------------------------
 
         option = page.get_by_text(
             "4 نفر",
             exact=True
         )
 
-        print(
-            "4-person options found:",
-            await option.count()
+        for i in range(await option.count()):
+
+            if await option.nth(i).is_visible():
+
+                await option.nth(i).click()
+                break
+
+        await page.wait_for_timeout(1000)
+
+        print("Selected: 4 نفر")
+
+        # -----------------------------------------
+        # بررسی عناصر دارای data-test
+        # -----------------------------------------
+
+        print("\n===== DATA-TEST ELEMENTS =====")
+
+        elements = page.locator(
+            "[data-test]"
         )
 
-        for i in range(await option.count()):
+        count = await elements.count()
+
+        print(
+            "Count:",
+            count
+        )
+
+        for i in range(count):
 
             try:
 
-                print(
-                    f"Option {i}: "
-                    f"visible="
-                    f"{await option.nth(i).is_visible()}"
+                el = elements.nth(i)
+
+                data_test = await el.get_attribute(
+                    "data-test"
                 )
+
+                text = (
+                    await el.inner_text()
+                ).strip()
+
+                if (
+                    text
+                    or
+                    "price" in data_test.lower()
+                    or
+                    "booking" in data_test.lower()
+                    or
+                    "total" in data_test.lower()
+                ):
+
+                    print(
+                        f"\n{i}:"
+                    )
+
+                    print(
+                        "data-test:",
+                        data_test
+                    )
+
+                    print(
+                        "text:",
+                        repr(text[:500])
+                    )
 
             except Exception:
                 pass
 
         # -----------------------------------------
-        # انتخاب گزینه 4 نفر
+        # بررسی اعداد بزرگ داخل صفحه
         # -----------------------------------------
-
-        visible_option = None
-
-        for i in range(await option.count()):
-
-            if await option.nth(i).is_visible():
-
-                visible_option = option.nth(i)
-                break
-
-        if visible_option is None:
-
-            print(
-                "ERROR: 4-person option not found"
-            )
-
-            await browser.close()
-            return
-
-        await visible_option.click()
-
-        await page.wait_for_timeout(1000)
 
         print(
-            "Selected: 4 نفر"
+            "\n===== PRICE-LIKE ELEMENTS ====="
         )
 
-        # -----------------------------------------
-        # بررسی مقدار فیلد
-        # -----------------------------------------
+        spans = page.locator(
+            "span"
+        )
 
-        value = await guest_input.input_value()
+        count = await spans.count()
+
+        for i in range(count):
+
+            try:
+
+                el = spans.nth(i)
+
+                text = (
+                    await el.inner_text()
+                ).strip()
+
+                # قیمت‌های احتمالی
+                if (
+                    "٬" in text
+                    and any(
+                        c.isdigit()
+                        for c in text
+                    )
+                ):
+
+                    print(
+                        f"\nSPAN {i}:",
+                        repr(text)
+                    )
+
+                    print(
+                        "HTML:",
+                        (
+                            await el.evaluate(
+                                "(e) => e.outerHTML"
+                            )
+                        )[:1500]
+                    )
+
+            except Exception:
+                pass
+
+        # -----------------------------------------
+        # عناصر دارای تومان
+        # -----------------------------------------
 
         print(
-            "Guest field value:",
-            repr(value)
+            "\n===== TOMAN ELEMENTS ====="
         )
-
-        # -----------------------------------------
-        # گرفتن متن بخش رزرو
-        # -----------------------------------------
 
         body = await page.locator(
             "body"
         ).inner_text()
 
-        print(
-            "\n===== BOOKING AREA ====="
-        )
+        for line in body.splitlines():
 
-        lines = body.splitlines()
+            line = line.strip()
 
-        for i, line in enumerate(lines):
-
-            if (
-                "تاریخ ورود" in line
-                or
-                "تاریخ خروج" in line
-                or
-                "تعداد نفرات" in line
-                or
-                "تومان" in line
-                or
-                "صورتحساب" in line
-            ):
-
-                start = max(
-                    0,
-                    i - 2
-                )
-
-                end = min(
-                    len(lines),
-                    i + 8
-                )
+            if "تومان" in line:
 
                 print(
-                    "\n".join(
-                        lines[start:end]
-                    )
+                    repr(line)
                 )
 
         # -----------------------------------------
 
         await page.screenshot(
-            path="four_guests.png",
+            path="four_guests_price.png",
             full_page=True
         )
 
