@@ -1,4 +1,3 @@
-
 import asyncio
 from playwright.async_api import async_playwright
 
@@ -30,30 +29,50 @@ async def main():
             timeout=60000
         )
 
-        print("Waiting for page...")
+        await page.wait_for_timeout(5000)
 
-        await page.wait_for_timeout(8000)
+        print("Page loaded")
 
-        print("Page title:")
-        print(await page.title())
+        # ------------------------------------------------
+        # پیدا کردن تمام عناصر مربوط به عدد 28
+        # ------------------------------------------------
 
-        print("URL:")
-        print(page.url)
+        print("Searching for day 28...")
 
-        text = await page.locator("body").inner_text()
-
-        print("Page text length:")
-        print(len(text))
-
-        print("First 5000 characters:")
-        print(text[:5000])
-
-        await page.screenshot(
-            path="jajiga_page.png",
-            full_page=True
+        elements_28 = page.get_by_text(
+            "۲۸",
+            exact=True
         )
 
-        print("Screenshot saved.")
+        count_28 = await elements_28.count()
+
+        print("Number of elements containing 28:", count_28)
+
+        for i in range(count_28):
+
+            try:
+
+                element = elements_28.nth(i)
+
+                print(
+                    "28 element",
+                    i,
+                    "visible:",
+                    await element.is_visible()
+                )
+
+            except Exception as e:
+
+                print("Error:", e)
+
+        # ------------------------------------------------
+        # screenshot
+        # ------------------------------------------------
+
+        await page.screenshot(
+            path="calendar_test.png",
+            full_page=True
+        )
 
         await browser.close()
 
