@@ -1,0 +1,14 @@
+name: Jajiga Price Monitor
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Test
+        run: |
+          echo "Jajiga monitor is working"
+          date
