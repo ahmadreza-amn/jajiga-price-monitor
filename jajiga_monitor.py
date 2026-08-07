@@ -1,8 +1,99 @@
 import asyncio
+import re
+
 from playwright.async_api import async_playwright
 
 
 URL = "https://www.jajiga.com/room/3159346"
+
+
+def normalize_price(text):
+
+    if not text:
+        return None
+
+    # تبدیل اعداد فارسی به انگلیسی
+    table = str.maketrans(
+        "۰۱۲۳۴۵۶۷۸۹",
+        "0123456789"
+    )
+
+    text = text.translate(table)
+
+    # حذف جداکننده هزارگان
+    text = text.replace("٬", "")
+    text = text.replace(",", "")
+    text = text.replace(" ", "")
+
+    match = re.search(
+        r"\d+",
+        text
+    )
+
+    if not match:
+        return None
+
+    return int(match.group())
+
+
+async def get_day_price(page, date):
+
+    selector = (
+        f'[data-test="calendar-day-{date}"]'
+    )
+
+    element = page.locator(selector)
+
+    count = await element.count()
+
+    if count == 0:
+
+        print(
+            f"DATE NOT FOUND: {date}"
+        )
+
+        return None
+
+    # HTML کامل روز
+    html = await element.inner_html()
+
+    print(
+        f"\nDATE {date}"
+    )
+
+    print(
+        "HTML:",
+        html
+    )
+
+    # پیدا کردن span قیمت
+    price_elements = element.locator(
+        "span"
+    )
+
+    count = await price_elements.count()
+
+    for i in range(count):
+
+        text = (
+            await price_elements.nth(i).inner_text()
+        ).strip()
+
+        price = normalize_price(text)
+
+        if price and price >= 100000:
+
+            print(
+                f"PRICE: {price:,} تومان"
+            )
+
+            return price
+
+    print(
+        "PRICE NOT FOUND"
+    )
+
+    return None
 
 
 async def main():
@@ -21,7 +112,9 @@ async def main():
             locale="fa-IR"
         )
 
-        print("Opening Jajiga...")
+        print(
+            "Opening Jajiga..."
+        )
 
         await page.goto(
             URL,
@@ -29,130 +122,85 @@ async def main():
             timeout=60000
         )
 
-        await page.wait_for_timeout(5000)
-
-        print("Page loaded")
-
-        # --------------------------------------------------
-        # پیدا کردن متن دقیق 28
-        # --------------------------------------------------
-
-        locator = page.get_by_text(
-            "28",
-            exact=True
+        await page.wait_for_timeout(
+            5000
         )
-
-        count = await locator.count()
-
-        print("\n===== EXACT 28 ELEMENTS =====")
-        print("Count:", count)
-
-        for i in range(count):
-
-            element = locator.nth(i)
-
-            try:
-
-                print(f"\n--- ELEMENT {i} ---")
-
-                print(
-                    "Visible:",
-                    await element.is_visible()
-                )
-
-                print(
-                    "Tag:",
-                    await element.evaluate(
-                        "(e) => e.tagName"
-                    )
-                )
-
-                print(
-                    "Text:",
-                    await element.inner_text()
-                )
-
-                print(
-                    "HTML:"
-                )
-
-                html = await element.evaluate(
-                    "(e) => e.outerHTML"
-                )
-
-                print(html)
-
-                # والد مستقیم
-                parent = await element.evaluate(
-                    "(e) => e.parentElement.outerHTML"
-                )
-
-                print(
-                    "\nPARENT HTML:"
-                )
-
-                print(parent[:3000])
-
-                # والد والد
-                grandparent = await element.evaluate(
-                    "(e) => e.parentElement.parentElement.outerHTML"
-                )
-
-                print(
-                    "\nGRANDPARENT HTML:"
-                )
-
-                print(grandparent[:5000])
-
-            except Exception as e:
-
-                print(
-                    "ERROR:",
-                    e
-                )
-
-        # --------------------------------------------------
-        # پیدا کردن تمام متن‌های اطراف 28 در body
-        # --------------------------------------------------
-
-        body_text = await page.locator(
-            "body"
-        ).inner_text()
 
         print(
-            "\n===== BODY CONTEXT ====="
+            "Page loaded"
         )
 
-        positions = []
+        # ----------------------------------------------
+        # قیمت 28 مرداد
+        # ----------------------------------------------
 
-        start = 0
+        price_28 = await get_day_price(
+            page,
+            "1405-05-28"
+        )
 
-        while True:
+        # ----------------------------------------------
+        # قیمت 29 مرداد
+        # ----------------------------------------------
 
-            pos = body_text.find(
-                "28",
-                start
+        price_29 = await get_day_price(
+            page,
+            "1405-05-29"
+        )
+
+        # ----------------------------------------------
+        # نتیجه
+        # ----------------------------------------------
+
+        print(
+            "\n=============================="
+        )
+
+        print(
+            "Jajiga price report"
+        )
+
+        print(
+            "Room: 3159346"
+        )
+
+        print(
+            "Guests: 4"
+        )
+
+        print(
+            "28 Mordad:",
+            f"{price_28:,}"
+            if price_28 else
+            "NOT FOUND"
+        )
+
+        print(
+            "29 Mordad:",
+            f"{price_29:,}"
+            if price_29 else
+            "NOT FOUND"
+        )
+
+        if price_28 and price_29:
+
+            total = (
+                price_28 +
+                price_29
             )
-
-            if pos == -1:
-                break
-
-            positions.append(pos)
-
-            start = pos + 2
-
-        for pos in positions:
-
-            print("\n--------------------")
 
             print(
-                body_text[
-                    max(0, pos - 300):
-                    pos + 500
-                ]
+                "------------------------------"
             )
 
-        # --------------------------------------------------
+            print(
+                "TOTAL:",
+                f"{total:,} تومان"
+            )
+
+        print(
+            "=============================="
+        )
 
         await browser.close()
 
