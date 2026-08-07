@@ -33,16 +33,96 @@ async def main():
 
         print("Page loaded")
 
-        # --------------------------------------------
-        # متن دکمه‌ها
-        # --------------------------------------------
+        # ---------------------------------------------
+        # فیلد تعداد نفرات
+        # ---------------------------------------------
 
-        print("\n===== ALL BUTTONS =====")
+        guest_input = page.locator(
+            'input[placeholder="تعداد نفرات را مشخص کنید"]'
+        )
+
+        print(
+            "Guest input count:",
+            await guest_input.count()
+        )
+
+        if await guest_input.count() == 0:
+
+            print("Guest input NOT FOUND")
+
+            await browser.close()
+            return
+
+        print(
+            "Guest input visible:",
+            await guest_input.is_visible()
+        )
+
+        # کلیک روی فیلد
+        await guest_input.click()
+
+        await page.wait_for_timeout(1000)
+
+        print("\n===== AFTER GUEST CLICK =====")
+
+        # ---------------------------------------------
+        # متن صفحه بعد از باز شدن منوی مهمان
+        # ---------------------------------------------
+
+        body = await page.locator(
+            "body"
+        ).inner_text()
+
+        lines = body.splitlines()
+
+        for i, line in enumerate(lines):
+
+            if (
+                "بزرگسال" in line
+                or
+                "کودک" in line
+                or
+                "نوزاد" in line
+                or
+                "مهمان" in line
+                or
+                "نفر" in line
+                or
+                "+" in line
+                or
+                "−" in line
+            ):
+
+                start = max(
+                    0,
+                    i - 3
+                )
+
+                end = min(
+                    len(lines),
+                    i + 6
+                )
+
+                print(
+                    "\n".join(
+                        lines[start:end]
+                    )
+                )
+
+        # ---------------------------------------------
+        # تمام دکمه‌های جدید
+        # ---------------------------------------------
+
+        print("\n===== BUTTONS AFTER GUEST CLICK =====")
 
         buttons = page.locator("button")
+
         count = await buttons.count()
 
-        print("Button count:", count)
+        print(
+            "Button count:",
+            count
+        )
 
         for i in range(count):
 
@@ -58,162 +138,43 @@ async def main():
                     "aria-label"
                 )
 
-                title = await b.get_attribute(
-                    "title"
-                )
-
-                if text or aria or title:
+                if text or aria:
 
                     print(
-                        f"\nBUTTON {i}"
+                        f"BUTTON {i}: "
+                        f"text={repr(text)} "
+                        f"aria={repr(aria)}"
                     )
 
-                    print(
-                        "text:",
-                        repr(text)
-                    )
+            except Exception:
+                pass
 
-                    print(
-                        "aria:",
-                        repr(aria)
-                    )
-
-                    print(
-                        "title:",
-                        repr(title)
-                    )
-
-                    print(
-                        "HTML:",
-                        (
-                            await b.evaluate(
-                                "(e) => e.outerHTML"
-                            )
-                        )[:2000]
-                    )
-
-            except Exception as e:
-
-                print(
-                    "ERROR:",
-                    e
-                )
-
-        # --------------------------------------------
-        # ورودی‌ها
-        # --------------------------------------------
-
-        print("\n===== INPUTS =====")
-
-        inputs = page.locator(
-            "input, select"
-        )
-
-        count = await inputs.count()
+        # ---------------------------------------------
+        # HTML مربوط به فیلد مهمان
+        # ---------------------------------------------
 
         print(
-            "Input/select count:",
-            count
+            "\n===== GUEST INPUT PARENT ====="
         )
 
-        for i in range(count):
+        html = await guest_input.evaluate(
+            "(e) => e.parentElement.parentElement.outerHTML"
+        )
 
-            try:
+        print(html[:10000])
 
-                el = inputs.nth(i)
+        # ---------------------------------------------
+        # screenshot
+        # ---------------------------------------------
 
-                print(
-                    f"\nINPUT {i}"
-                )
+        await page.screenshot(
+            path="guest_menu.png",
+            full_page=True
+        )
 
-                print(
-                    "tag:",
-                    await el.evaluate(
-                        "(e) => e.tagName"
-                    )
-                )
-
-                print(
-                    "type:",
-                    await el.get_attribute(
-                        "type"
-                    )
-                )
-
-                print(
-                    "name:",
-                    await el.get_attribute(
-                        "name"
-                    )
-                )
-
-                print(
-                    "placeholder:",
-                    await el.get_attribute(
-                        "placeholder"
-                    )
-                )
-
-                print(
-                    "value:",
-                    await el.get_attribute(
-                        "value"
-                    )
-                )
-
-                print(
-                    "aria-label:",
-                    await el.get_attribute(
-                        "aria-label"
-                    )
-                )
-
-            except Exception as e:
-
-                print(
-                    "ERROR:",
-                    e
-                )
-
-        # --------------------------------------------
-        # متن اطراف «مهمان»
-        # --------------------------------------------
-
-        print("\n===== GUEST TEXT =====")
-
-        body = await page.locator(
-            "body"
-        ).inner_text()
-
-        lines = body.splitlines()
-
-        for i, line in enumerate(lines):
-
-            if (
-                "مهمان" in line
-                or
-                "نفر" in line
-                or
-                "بزرگسال" in line
-                or
-                "کودک" in line
-            ):
-
-                start = max(
-                    0,
-                    i - 3
-                )
-
-                end = min(
-                    len(lines),
-                    i + 5
-                )
-
-                print(
-                    "\n".join(
-                        lines[start:end]
-                    )
-                )
+        print(
+            "\nScreenshot saved: guest_menu.png"
+        )
 
         await browser.close()
 
