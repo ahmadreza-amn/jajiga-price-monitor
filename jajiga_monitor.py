@@ -1,99 +1,8 @@
 import asyncio
-import re
-
 from playwright.async_api import async_playwright
 
 
 URL = "https://www.jajiga.com/room/3159346"
-
-
-def normalize_price(text):
-
-    if not text:
-        return None
-
-    # تبدیل اعداد فارسی به انگلیسی
-    table = str.maketrans(
-        "۰۱۲۳۴۵۶۷۸۹",
-        "0123456789"
-    )
-
-    text = text.translate(table)
-
-    # حذف جداکننده هزارگان
-    text = text.replace("٬", "")
-    text = text.replace(",", "")
-    text = text.replace(" ", "")
-
-    match = re.search(
-        r"\d+",
-        text
-    )
-
-    if not match:
-        return None
-
-    return int(match.group())
-
-
-async def get_day_price(page, date):
-
-    selector = (
-        f'[data-test="calendar-day-{date}"]'
-    )
-
-    element = page.locator(selector)
-
-    count = await element.count()
-
-    if count == 0:
-
-        print(
-            f"DATE NOT FOUND: {date}"
-        )
-
-        return None
-
-    # HTML کامل روز
-    html = await element.inner_html()
-
-    print(
-        f"\nDATE {date}"
-    )
-
-    print(
-        "HTML:",
-        html
-    )
-
-    # پیدا کردن span قیمت
-    price_elements = element.locator(
-        "span"
-    )
-
-    count = await price_elements.count()
-
-    for i in range(count):
-
-        text = (
-            await price_elements.nth(i).inner_text()
-        ).strip()
-
-        price = normalize_price(text)
-
-        if price and price >= 100000:
-
-            print(
-                f"PRICE: {price:,} تومان"
-            )
-
-            return price
-
-    print(
-        "PRICE NOT FOUND"
-    )
-
-    return None
 
 
 async def main():
@@ -112,9 +21,7 @@ async def main():
             locale="fa-IR"
         )
 
-        print(
-            "Opening Jajiga..."
-        )
+        print("Opening Jajiga...")
 
         await page.goto(
             URL,
@@ -122,85 +29,191 @@ async def main():
             timeout=60000
         )
 
-        await page.wait_for_timeout(
-            5000
+        await page.wait_for_timeout(5000)
+
+        print("Page loaded")
+
+        # --------------------------------------------
+        # متن دکمه‌ها
+        # --------------------------------------------
+
+        print("\n===== ALL BUTTONS =====")
+
+        buttons = page.locator("button")
+        count = await buttons.count()
+
+        print("Button count:", count)
+
+        for i in range(count):
+
+            try:
+
+                b = buttons.nth(i)
+
+                text = (
+                    await b.inner_text()
+                ).strip()
+
+                aria = await b.get_attribute(
+                    "aria-label"
+                )
+
+                title = await b.get_attribute(
+                    "title"
+                )
+
+                if text or aria or title:
+
+                    print(
+                        f"\nBUTTON {i}"
+                    )
+
+                    print(
+                        "text:",
+                        repr(text)
+                    )
+
+                    print(
+                        "aria:",
+                        repr(aria)
+                    )
+
+                    print(
+                        "title:",
+                        repr(title)
+                    )
+
+                    print(
+                        "HTML:",
+                        (
+                            await b.evaluate(
+                                "(e) => e.outerHTML"
+                            )
+                        )[:2000]
+                    )
+
+            except Exception as e:
+
+                print(
+                    "ERROR:",
+                    e
+                )
+
+        # --------------------------------------------
+        # ورودی‌ها
+        # --------------------------------------------
+
+        print("\n===== INPUTS =====")
+
+        inputs = page.locator(
+            "input, select"
         )
+
+        count = await inputs.count()
 
         print(
-            "Page loaded"
+            "Input/select count:",
+            count
         )
 
-        # ----------------------------------------------
-        # قیمت 28 مرداد
-        # ----------------------------------------------
+        for i in range(count):
 
-        price_28 = await get_day_price(
-            page,
-            "1405-05-28"
-        )
+            try:
 
-        # ----------------------------------------------
-        # قیمت 29 مرداد
-        # ----------------------------------------------
+                el = inputs.nth(i)
 
-        price_29 = await get_day_price(
-            page,
-            "1405-05-29"
-        )
+                print(
+                    f"\nINPUT {i}"
+                )
 
-        # ----------------------------------------------
-        # نتیجه
-        # ----------------------------------------------
+                print(
+                    "tag:",
+                    await el.evaluate(
+                        "(e) => e.tagName"
+                    )
+                )
 
-        print(
-            "\n=============================="
-        )
+                print(
+                    "type:",
+                    await el.get_attribute(
+                        "type"
+                    )
+                )
 
-        print(
-            "Jajiga price report"
-        )
+                print(
+                    "name:",
+                    await el.get_attribute(
+                        "name"
+                    )
+                )
 
-        print(
-            "Room: 3159346"
-        )
+                print(
+                    "placeholder:",
+                    await el.get_attribute(
+                        "placeholder"
+                    )
+                )
 
-        print(
-            "Guests: 4"
-        )
+                print(
+                    "value:",
+                    await el.get_attribute(
+                        "value"
+                    )
+                )
 
-        print(
-            "28 Mordad:",
-            f"{price_28:,}"
-            if price_28 else
-            "NOT FOUND"
-        )
+                print(
+                    "aria-label:",
+                    await el.get_attribute(
+                        "aria-label"
+                    )
+                )
 
-        print(
-            "29 Mordad:",
-            f"{price_29:,}"
-            if price_29 else
-            "NOT FOUND"
-        )
+            except Exception as e:
 
-        if price_28 and price_29:
+                print(
+                    "ERROR:",
+                    e
+                )
 
-            total = (
-                price_28 +
-                price_29
-            )
+        # --------------------------------------------
+        # متن اطراف «مهمان»
+        # --------------------------------------------
 
-            print(
-                "------------------------------"
-            )
+        print("\n===== GUEST TEXT =====")
 
-            print(
-                "TOTAL:",
-                f"{total:,} تومان"
-            )
+        body = await page.locator(
+            "body"
+        ).inner_text()
 
-        print(
-            "=============================="
-        )
+        lines = body.splitlines()
+
+        for i, line in enumerate(lines):
+
+            if (
+                "مهمان" in line
+                or
+                "نفر" in line
+                or
+                "بزرگسال" in line
+                or
+                "کودک" in line
+            ):
+
+                start = max(
+                    0,
+                    i - 3
+                )
+
+                end = min(
+                    len(lines),
+                    i + 5
+                )
+
+                print(
+                    "\n".join(
+                        lines[start:end]
+                    )
+                )
 
         await browser.close()
 
