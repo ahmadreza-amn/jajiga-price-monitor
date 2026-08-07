@@ -34,219 +34,125 @@ async def main():
         print("Page loaded")
 
         # --------------------------------------------------
-        # تمام متن صفحه
+        # پیدا کردن متن دقیق 28
         # --------------------------------------------------
 
-        text = await page.locator("body").inner_text()
-
-        print("\n===== SEARCH RESULTS =====")
-
-        for word in ["۲۸", "28", "مرداد", "1405", "۱۴۰۵"]:
-
-            print(
-                f"Searching for [{word}]:",
-                text.count(word)
-            )
-
-        # --------------------------------------------------
-        # عناصر دارای aria-label
-        # --------------------------------------------------
-
-        print("\n===== ARIA LABELS =====")
-
-        elements = page.locator("[aria-label]")
-
-        count = await elements.count()
-
-        print("Total aria-label elements:", count)
-
-        for i in range(min(count, 300)):
-
-            try:
-
-                el = elements.nth(i)
-
-                label = await el.get_attribute("aria-label")
-
-                if label:
-
-                    label_normalized = (
-                        label
-                        .replace("۲", "2")
-                        .replace("۸", "8")
-                    )
-
-                    if (
-                        "28" in label_normalized
-                        or
-                        "مرداد" in label
-                        or
-                        "1405" in label
-                        or
-                        "۱۴۰۵" in label
-                    ):
-
-                        print(
-                            f"ARIA {i}: {label}"
-                        )
-
-            except Exception:
-                pass
-
-        # --------------------------------------------------
-        # عناصر دارای data-* attributes
-        # --------------------------------------------------
-
-        print("\n===== DATA ATTRIBUTES =====")
-
-        elements = page.locator(
-            "[data-date], "
-            "[data-day], "
-            "[data-value], "
-            "[data-testid]"
+        locator = page.get_by_text(
+            "28",
+            exact=True
         )
 
-        count = await elements.count()
+        count = await locator.count()
 
-        print(
-            "Potential date elements:",
-            count
-        )
-
-        for i in range(min(count, 300)):
-
-            try:
-
-                el = elements.nth(i)
-
-                tag = await el.evaluate(
-                    "(e) => e.tagName"
-                )
-
-                text_value = (
-                    await el.inner_text()
-                ).strip()
-
-                date_value = (
-                    await el.get_attribute(
-                        "data-date"
-                    )
-                )
-
-                day_value = (
-                    await el.get_attribute(
-                        "data-day"
-                    )
-                )
-
-                value = (
-                    await el.get_attribute(
-                        "data-value"
-                    )
-                )
-
-                testid = (
-                    await el.get_attribute(
-                        "data-testid"
-                    )
-                )
-
-                combined = (
-                    f"{text_value} "
-                    f"{date_value} "
-                    f"{day_value} "
-                    f"{value} "
-                    f"{testid}"
-                )
-
-                normalized = (
-                    combined
-                    .replace("۲", "2")
-                    .replace("۸", "8")
-                    .replace("۰", "0")
-                    .replace("۱", "1")
-                    .replace("۴", "4")
-                    .replace("۵", "5")
-                )
-
-                if (
-                    "28" in normalized
-                    or
-                    "1405" in normalized
-                    or
-                    "05" in normalized
-                ):
-
-                    print(
-                        f"{i}: "
-                        f"tag={tag}, "
-                        f"text={text_value}, "
-                        f"date={date_value}, "
-                        f"day={day_value}, "
-                        f"value={value}, "
-                        f"testid={testid}"
-                    )
-
-            except Exception:
-                pass
-
-        # --------------------------------------------------
-        # دکمه‌های تقویم
-        # --------------------------------------------------
-
-        print("\n===== BUTTONS =====")
-
-        buttons = page.locator("button")
-
-        count = await buttons.count()
-
-        print("Total buttons:", count)
+        print("\n===== EXACT 28 ELEMENTS =====")
+        print("Count:", count)
 
         for i in range(count):
 
+            element = locator.nth(i)
+
             try:
 
-                button = buttons.nth(i)
+                print(f"\n--- ELEMENT {i} ---")
 
-                txt = (
-                    await button.inner_text()
-                ).strip()
-
-                aria = await button.get_attribute(
-                    "aria-label"
+                print(
+                    "Visible:",
+                    await element.is_visible()
                 )
 
-                title = await button.get_attribute(
-                    "title"
-                )
-
-                if txt or aria or title:
-
-                    print(
-                        f"BUTTON {i}: "
-                        f"text=[{txt}] "
-                        f"aria=[{aria}] "
-                        f"title=[{title}]"
+                print(
+                    "Tag:",
+                    await element.evaluate(
+                        "(e) => e.tagName"
                     )
+                )
 
-            except Exception:
-                pass
+                print(
+                    "Text:",
+                    await element.inner_text()
+                )
+
+                print(
+                    "HTML:"
+                )
+
+                html = await element.evaluate(
+                    "(e) => e.outerHTML"
+                )
+
+                print(html)
+
+                # والد مستقیم
+                parent = await element.evaluate(
+                    "(e) => e.parentElement.outerHTML"
+                )
+
+                print(
+                    "\nPARENT HTML:"
+                )
+
+                print(parent[:3000])
+
+                # والد والد
+                grandparent = await element.evaluate(
+                    "(e) => e.parentElement.parentElement.outerHTML"
+                )
+
+                print(
+                    "\nGRANDPARENT HTML:"
+                )
+
+                print(grandparent[:5000])
+
+            except Exception as e:
+
+                print(
+                    "ERROR:",
+                    e
+                )
 
         # --------------------------------------------------
-        # ذخیره HTML صفحه برای بررسی
+        # پیدا کردن تمام متن‌های اطراف 28 در body
         # --------------------------------------------------
 
-        html = await page.content()
+        body_text = await page.locator(
+            "body"
+        ).inner_text()
 
-        with open(
-            "jajiga_page.html",
-            "w",
-            encoding="utf-8"
-        ) as f:
+        print(
+            "\n===== BODY CONTEXT ====="
+        )
 
-            f.write(html)
+        positions = []
 
-        print("\nHTML saved.")
+        start = 0
+
+        while True:
+
+            pos = body_text.find(
+                "28",
+                start
+            )
+
+            if pos == -1:
+                break
+
+            positions.append(pos)
+
+            start = pos + 2
+
+        for pos in positions:
+
+            print("\n--------------------")
+
+            print(
+                body_text[
+                    max(0, pos - 300):
+                    pos + 500
+                ]
+            )
+
+        # --------------------------------------------------
 
         await browser.close()
 
