@@ -41,7 +41,10 @@ async def main():
             '[data-test="room-booking-guests"]'
         )
 
-        print("Guest input count:", await guest_input.count())
+        print(
+            "Guest input count:",
+            await guest_input.count()
+        )
 
         await guest_input.click()
 
@@ -72,10 +75,13 @@ async def main():
         await page.wait_for_timeout(1000)
 
         # =========================================
-        # انتخاب تاریخ ورود: 28 مرداد
+        # انتخاب تاریخ ورود
+        # 28 مرداد 1405
         # =========================================
 
-        print("\nSelecting check-in: 1405-05-28")
+        print(
+            "\nSelecting check-in: 1405-05-28"
+        )
 
         checkin = page.locator(
             '[data-test="calendar-day-1405-05-28"]'
@@ -103,10 +109,13 @@ async def main():
         await page.wait_for_timeout(1000)
 
         # =========================================
-        # انتخاب تاریخ خروج: 30 مرداد
+        # انتخاب تاریخ خروج
+        # 30 مرداد 1405
         # =========================================
 
-        print("\nSelecting check-out: 1405-05-30")
+        print(
+            "\nSelecting check-out: 1405-05-30"
+        )
 
         checkout = page.locator(
             '[data-test="calendar-day-1405-05-30"]'
@@ -134,16 +143,23 @@ async def main():
         await page.wait_for_timeout(2000)
 
         # =========================================
-        # نمایش وضعیت تاریخ‌ها
+        # بررسی Input ها
         # =========================================
 
-        print("\n===== DATE INPUTS =====")
-
-        inputs = page.locator(
-            "input"
+        print(
+            "\n===== DATE INPUTS ====="
         )
 
-        for i in range(await inputs.count()):
+        inputs = page.locator("input")
+
+        input_count = await inputs.count()
+
+        print(
+            "Input count:",
+            input_count
+        )
+
+        for i in range(input_count):
 
             try:
 
@@ -170,7 +186,7 @@ async def main():
                 pass
 
         # =========================================
-        # بررسی قیمت‌های صفحه
+        # بررسی قیمت ها و صورتحساب
         # =========================================
 
         print(
@@ -198,7 +214,7 @@ async def main():
                 )
 
         # =========================================
-        # بررسی data-test های مربوط به رزرو
+        # بررسی data-test های رزرو
         # =========================================
 
         print(
@@ -209,7 +225,14 @@ async def main():
             "[data-test]"
         )
 
-        for i in range(await elements.count()):
+        element_count = await elements.count()
+
+        print(
+            "Data-test count:",
+            element_count
+        )
+
+        for i in range(element_count):
 
             try:
 
@@ -219,7 +242,16 @@ async def main():
                     "data-test"
                 )
 
-               text = (await el.inner_text()).strip().replace("\n", " | ")
+                text = (
+                    await el.inner_text()
+                )
+
+                text = text.strip()
+
+                text = text.replace(
+                    "\n",
+                    " | "
+                )
 
                 if (
                     "book" in data_test.lower()
