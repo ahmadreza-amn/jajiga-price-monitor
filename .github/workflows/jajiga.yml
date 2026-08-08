@@ -1,16 +1,24 @@
 name: Jajiga Price Monitor
 
 on:
+  schedule:
+    - cron: "*/30 * * * *"
+
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  test-jajiga:
+  monitor:
     runs-on: ubuntu-latest
 
     steps:
 
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -19,16 +27,27 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          playwright install --with-deps chromium
+          pip install playwright requests
+          playwright install chromium
+          playwright install-deps chromium
 
-      - name: Run Jajiga test
+      - name: Run Jajiga monitor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python jajiga_monitor.py
 
-      - name: Upload screenshot
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jajiga-page-screenshot
-          path: jajiga_page.png
+      - name: Save price state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add price_state.json
+
+          if git diff --cached --quiet; then
+            echo "No state change."
+          else
+            git commit -m "Update Jajiga price state"
+            git push
+          fi
