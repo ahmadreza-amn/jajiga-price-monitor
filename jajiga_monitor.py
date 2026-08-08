@@ -326,17 +326,46 @@ async def main():
             await checkin.count()
         )
 
-        if await checkin.count() == 0:
+       if await checkin.count() == 0:
 
-            print("ERROR: تاریخ ورود پیدا نشد")
+    print("ERROR: تاریخ 28 مرداد پیدا نشد")
 
-            await browser.close()
-            return
+else:
 
-        await checkin.first.click()
+    checkin_el = checkin.first
 
-        print("Check-in selected.")
+    aria_disabled = await checkin_el.get_attribute("aria-disabled")
+    aria_label = await checkin_el.get_attribute("aria-label")
+    class_name = await checkin_el.get_attribute("class")
 
+    print("Check-in aria-disabled:", aria_disabled)
+    print("Check-in aria-label:", aria_label)
+
+    if aria_disabled == "true":
+
+        print("ERROR: تاریخ 28 مرداد توسط جاجیگا غیرفعال شده است.")
+        print("aria-label:", aria_label)
+        print("class:", class_name)
+
+        # ذخیره HTML برای بررسی
+        html = await checkin_el.evaluate(
+            "(el) => el.outerHTML"
+        )
+
+        print("HTML:")
+        print(html)
+
+        await page.screenshot(
+            path="calendar_disabled.png",
+            full_page=True
+        )
+
+        await browser.close()
+        return
+
+    await checkin_el.click()
+
+    print("Check-in selected.")
         await page.wait_for_timeout(1000)
 
         # =========================================
