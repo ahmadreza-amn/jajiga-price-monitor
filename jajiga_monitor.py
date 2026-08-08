@@ -1,27 +1,112 @@
 import asyncio
-import re
 import json
 import os
+import re
+from pathlib import Path
+
+import requests
 from playwright.async_api import async_playwright
 
 
+# =========================================================
+# CONFIG
+# =========================================================
+
 URL = "https://www.jajiga.com/room/3159346"
 
-CHECKIN = "1405-05-28"
-CHECKOUT = "1405-05-30"
+ROOM_CODE = "3159346"
+ROOM_NAME = "ویلا لب دریا در بندرانزلی - کپورچال"
 
-STATE_FILE = "price_state.json"
+GUESTS = 4
+
+CHECKIN_DATE = "1405-05-28"
+CHECKOUT_DATE = "1405-05-30"
+
+DATE_28 = "1405-05-28"
+DATE_29 = "1405-05-29"
+
+STATE_FILE = Path("price_state.json")
+
+# Telegram
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 
-def load_previous_prices():
+# =========================================================
+# UTILITIES
+# =========================================================
 
-    if not os.path.exists(STATE_FILE):
+def normalize_digits(text):
+    """
+    تبدیل ارقام فارسی و عربی به انگلیسی
+    """
 
-        return {
-            "price_28": None,
-            "price_29": None,
-            "total": None
-        }
+    if not text:
+        return ""
+
+    translation = str.maketrans(
+        "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩",
+        "01234567890123456789"
+    )
+
+    return text.translate(translation)
+
+
+def parse_price(text):
+    """
+    استخراج عدد قیمت از متن‌هایی مثل:
+
+    5٬000٬000
+    ۵٬۰۰۰٬۰۰۰
+    5,000,000 تومان
+    """
+
+    if not text:
+        return None
+
+    text = normalize_digits(text)
+
+    # جداکننده‌های فارسی/عربی/انگلیسی
+    text = (
+        text
+        .replace("٬", "")
+        .replace(",", "")
+        .replace("،", "")
+        .replace(" ", "")
+        .replace("تومان", "")
+    )
+
+    match = re.search(r"\d+", text)
+
+    if not match:
+        return None
+
+    return int(match.group())
+
+
+def format_price(price):
+    """
+    نمایش قیمت با جداکننده سه‌رقمی
+    """
+
+    return f"{price:,}".replace(",", "٬")
+
+
+def format_change(change):
+    """
+    نمایش مقدار تغییر
+    """
+
+    return format_price(abs(change))
+
+
+def load_state():
+    """
+    خواندن قیمت قبلی
+    """
+
+    if not STATE_FILE.exists():
+        return None
 
     try:
 
@@ -33,22 +118,31 @@ def load_previous_prices():
 
             return json.load(f)
 
-    except Exception:
+    except Exception as e:
 
-        return {
-            "price_28": None,
-            "price_29": None,
-            "total": None
-        }
+        print(
+            "WARNING: Could not read state file:",
+            e
+        )
+
+        return None
 
 
-def save_current_prices(
+def save_state(
     price_28,
     price_29,
     total
 ):
+    """
+    ذخیره قیمت فعلی
+    """
 
     data = {
+        "room_code": ROOM_CODE,
+        "room_name": ROOM_NAME,
+        "guests": GUESTS,
+        "checkin": CHECKIN_DATE,
+        "checkout": CHECKOUT_DATE,
         "price_28": price_28,
         "price_29": price_29,
         "total": total
@@ -68,533 +162,649 @@ def save_current_prices(
         )
 
 
-def format_price(value):
+# =========================================================
+# TELEGRAM
+# =========================================================
 
-    if value is None:
-        return "نامشخص"
+def send_telegram(message):
 
-    return f"{value:,} تومان"
+    if not TELEGRAM_BOT_TOKEN:
+        print(
+            "WARNING: TELEGRAM_BOT_TOKEN is not configured."
+        )
+        return False
+
+    if not TELEGRAM_CHAT_ID:
+        print(
+            "WARNING: TELEGRAM_CHAT_ID is not configured."
+        )
+        return False
+
+    api_url = (
+        f"https://api.telegram.org/"
+        f"bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    )
+
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message
+    }
+
+    try:
+
+        response = requests.post(
+            api_url,
+            json=payload,
+            timeout=30
+        )
+
+        response.raise_for_status()
+
+        result = response.json()
+
+        if not result.get("ok"):
+
+            print(
+                "Telegram error:",
+                result
+            )
+
+            return False
+
+        print(
+            "Telegram message sent successfully."
+        )
+
+        return True
+
+    except Exception as e:
+
+        print(
+            "Telegram send error:",
+            e
+        )
+
+        return False
 
 
-def compare_prices(
-    previous,
-    current_28,
-    current_29,
-    current_total
+# =========================================================
+# PRICE MESSAGE
+# =========================================================
+
+def build_price_change_message(
+    old,
+    new
 ):
 
-    old_28 = previous.get("price_28")
-    old_29 = previous.get("price_29")
-    old_total = previous.get("total")
+    total_change = new["total"] - old["total"]
 
-    # اجرای اول است؛ قیمت قبلی نداریم
-    if (
-        old_28 is None
-        or old_29 is None
-        or old_total is None
-    ):
+    if total_change < 0:
 
-        print(
-            "\nاولین اجرای ربات است؛"
-            " قیمت فعلی به عنوان قیمت پایه ذخیره می‌شود."
-        )
+        direction = "کاهش قیمت"
+        amount = format_change(total_change)
 
-        return False
+    else:
 
-    changed = (
-        old_28 != current_28
-        or old_29 != current_29
-        or old_total != current_total
+        direction = "افزایش قیمت"
+        amount = format_change(total_change)
+
+    message = (
+        "🔔 تغییر قیمت جاجیگا\n"
+        "\n"
+        f"اقامتگاه: {ROOM_NAME}\n"
+        f"تاریخ: ۲۸ تا ۳۰ مرداد\n"
+        f"مهمان: {GUESTS} نفر\n"
+        "\n"
+        f"قیمت قبلی: {format_price(old['total'])} تومان\n"
+        f"قیمت جدید: {format_price(new['total'])} تومان\n"
+        f"{direction}: {amount} تومان\n"
+        "\n"
+        "━━━━━━━━━━━━━━\n"
+        "\n"
+        "قیمت‌های شبانه:\n"
+        "\n"
+        f"قیمت قدیم ۲۸ مرداد: "
+        f"{format_price(old['price_28'])} تومان\n"
+        f"قیمت جدید ۲۸ مرداد: "
+        f"{format_price(new['price_28'])} تومان\n"
+        "\n"
+        f"قیمت قدیم ۲۹ مرداد: "
+        f"{format_price(old['price_29'])} تومان\n"
+        f"قیمت جدید ۲۹ مرداد: "
+        f"{format_price(new['price_29'])} تومان"
     )
 
-    if not changed:
-
-        print(
-            "\nقیمت‌ها نسبت به اجرای قبلی تغییری نکرده‌اند."
-        )
-
-        return False
-
-    print(
-        "\n🔔 PRICE CHANGE DETECTED"
+    # تغییر 28 مرداد
+    change_28 = (
+        new["price_28"] -
+        old["price_28"]
     )
 
-    print(
-        f"مجموع قبلی: {format_price(old_total)}"
-    )
+    if change_28 != 0:
 
-    print(
-        f"مجموع جدید: {format_price(current_total)}"
-    )
+        if change_28 < 0:
 
-    total_difference = current_total - old_total
-
-    if total_difference < 0:
-
-        print(
-            f"کاهش قیمت: {format_price(abs(total_difference))}"
-        )
-
-    elif total_difference > 0:
-
-        print(
-            f"افزایش قیمت: {format_price(total_difference)}"
-        )
-
-    print()
-
-    if old_28 != current_28:
-
-        difference_28 = current_28 - old_28
-
-        print(
-            f"28 مرداد قدیم: {format_price(old_28)}"
-        )
-
-        print(
-            f"28 مرداد جدید: {format_price(current_28)}"
-        )
-
-        if difference_28 < 0:
-
-            print(
-                f"کاهش 28 مرداد: "
-                f"{format_price(abs(difference_28))}"
+            text_28 = (
+                f"کاهش قیمت ۲۸ مرداد: "
+                f"{format_price(abs(change_28))} تومان"
             )
 
         else:
 
-            print(
-                f"افزایش 28 مرداد: "
-                f"{format_price(difference_28)}"
+            text_28 = (
+                f"افزایش قیمت ۲۸ مرداد: "
+                f"{format_price(abs(change_28))} تومان"
             )
 
-    if old_29 != current_29:
+        message += "\n" + text_28
 
-        difference_29 = current_29 - old_29
+    # تغییر 29 مرداد
+    change_29 = (
+        new["price_29"] -
+        old["price_29"]
+    )
 
-        print(
-            f"29 مرداد قدیم: {format_price(old_29)}"
-        )
+    if change_29 != 0:
 
-        print(
-            f"29 مرداد جدید: {format_price(current_29)}"
-        )
+        if change_29 < 0:
 
-        if difference_29 < 0:
-
-            print(
-                f"کاهش 29 مرداد: "
-                f"{format_price(abs(difference_29))}"
+            text_29 = (
+                f"کاهش قیمت ۲۹ مرداد: "
+                f"{format_price(abs(change_29))} تومان"
             )
 
         else:
 
-            print(
-                f"افزایش 29 مرداد: "
-                f"{format_price(difference_29)}"
+            text_29 = (
+                f"افزایش قیمت ۲۹ مرداد: "
+                f"{format_price(abs(change_29))} تومان"
             )
 
-    return True
+        message += "\n" + text_29
 
-def normalize_number(text):
-    """استخراج مبلغ از متن تقویم جاجیگا"""
+    return message
 
-    translation = str.maketrans(
-        "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٬",
-        "01234567890123456789,"
+
+# =========================================================
+# FIND CALENDAR PRICE
+# =========================================================
+
+async def get_calendar_price(
+    page,
+    date
+):
+
+    selector = (
+        f'[data-test="calendar-day-{date}"]'
     )
 
-    text = text.translate(translation)
+    locator = page.locator(selector)
 
-    # متن تقویم معمولاً چیزی شبیه:
-    # 28
-    # 5,000,000
-    #
-    # بنابراین باید آخرین عدد را برداریم،
-    # نه اینکه همه اعداد را به هم بچسبانیم.
+    count = await locator.count()
 
-    numbers = re.findall(
-        r"\d[\d,]*",
-        text
+    print(
+        f"{date} elements:",
+        count
     )
 
-    if not numbers:
+    if count == 0:
+
         return None
 
-    value = numbers[-1]
+    for i in range(count):
 
-    value = value.replace(",", "")
+        try:
 
-    return int(value)
+            element = locator.nth(i)
 
+            text = await element.inner_text()
+
+            text = text.strip()
+
+            print(
+                f"{date} raw text:",
+                repr(text)
+            )
+
+            # معمولاً:
+            #
+            # 28
+            # 5٬000٬000
+            #
+            # یا:
+            #
+            # 28\n5٬000٬000
+
+            lines = [
+                line.strip()
+                for line in text.splitlines()
+                if line.strip()
+            ]
+
+            for line in lines:
+
+                normalized = normalize_digits(
+                    line
+                )
+
+                # حذف عدد روز
+                if normalized in (
+                    date[-2:].lstrip("0"),
+                    date[-2:]
+                ):
+                    continue
+
+                price = parse_price(line)
+
+                if price is not None:
+
+                    # قیمت‌های بسیار کوچک را قیمت اجاره در نظر نمی‌گیریم
+                    if price >= 100000:
+
+                        print(
+                            f"PRICE FOUND {date}: "
+                            f"{format_price(price)}"
+                        )
+
+                        return price
+
+        except Exception as e:
+
+            print(
+                f"WARNING reading {date}:",
+                e
+            )
+
+    return None
+
+
+# =========================================================
+# MAIN
+# =========================================================
 
 async def main():
 
-    async with async_playwright() as p:
+    print(
+        "========================================"
+    )
 
-        browser = await p.chromium.launch(
-            headless=True
-        )
+    print(
+        "===== JAJIGA PRICE MONITOR ====="
+    )
 
-        page = await browser.new_page(
-            viewport={
-                "width": 1440,
-                "height": 1200
-            },
-            locale="fa-IR"
-        )
+    print(
+        "========================================"
+    )
 
-        print("Opening Jajiga...")
+    browser = None
 
-        await page.goto(
-            URL,
-            wait_until="domcontentloaded",
-            timeout=60000
-        )
+    try:
 
-        await page.wait_for_timeout(5000)
+        async with async_playwright() as p:
 
-        print("Page loaded")
+            browser = await p.chromium.launch(
+                headless=True
+            )
 
-        # =========================================
-        # انتخاب 4 نفر
-        # =========================================
+            page = await browser.new_page(
+                viewport={
+                    "width": 1440,
+                    "height": 1200
+                },
+                locale="fa-IR"
+            )
 
-        guest_input = page.locator(
-            '[data-test="room-booking-guests"]'
-        )
+            print(
+                "Opening Jajiga..."
+            )
 
-        print(
-            "Guest input count:",
-            await guest_input.count()
-        )
+            await page.goto(
+                URL,
+                wait_until="domcontentloaded",
+                timeout=60000
+            )
 
-        if await guest_input.count() == 0:
-            print("ERROR: guest input پیدا نشد")
-            await browser.close()
-            return
+            await page.wait_for_timeout(
+                5000
+            )
 
-        await guest_input.first.click()
+            print(
+                "Page loaded"
+            )
 
-        await page.wait_for_timeout(500)
+            # =================================================
+            # انتخاب 4 نفر
+            # =================================================
 
-        options = page.get_by_text(
-            "4 نفر",
-            exact=True
-        )
+            guest_input = page.locator(
+                '[data-test="room-booking-guests"]'
+            )
 
-        selected = False
+            guest_count = await guest_input.count()
 
-        for i in range(await options.count()):
+            print(
+                "Guest input count:",
+                guest_count
+            )
 
-            option = options.nth(i)
+            if guest_count == 0:
 
-            if await option.is_visible():
+                raise Exception(
+                    "Guest input not found."
+                )
 
-                await option.click()
+            await guest_input.first.click()
 
-                selected = True
+            await page.wait_for_timeout(
+                500
+            )
 
-                print("Selected: 4 نفر")
+            options = page.get_by_text(
+                "4 نفر",
+                exact=True
+            )
 
-                break
+            selected = False
 
-        if not selected:
+            for i in range(
+                await options.count()
+            ):
 
-            print("ERROR: گزینه 4 نفر پیدا نشد")
+                option = options.nth(i)
 
-            await browser.close()
-            return
+                try:
 
-        await page.wait_for_timeout(1000)
+                    if await option.is_visible():
 
-        # =========================================
-        # انتخاب ورود: 28 مرداد
-        # =========================================
+                        await option.click()
 
-        print(
-            f"\nSelecting check-in: {CHECKIN}"
-        )
+                        selected = True
 
-        checkin = page.locator(
-            f'[data-test="calendar-day-{CHECKIN}"]'
-        )
+                        print(
+                            "Selected: 4 نفر"
+                        )
 
-        print(
-            "Check-in elements:",
-            await checkin.count()
-        )
-
-       if await checkin.count() == 0:
-
-    print("ERROR: تاریخ 28 مرداد پیدا نشد")
-
-else:
-
-    checkin_el = checkin.first
-
-    aria_disabled = await checkin_el.get_attribute("aria-disabled")
-    aria_label = await checkin_el.get_attribute("aria-label")
-    class_name = await checkin_el.get_attribute("class")
-
-    print("Check-in aria-disabled:", aria_disabled)
-    print("Check-in aria-label:", aria_label)
-
-    if aria_disabled == "true":
-
-        print("ERROR: تاریخ 28 مرداد توسط جاجیگا غیرفعال شده است.")
-        print("aria-label:", aria_label)
-        print("class:", class_name)
-
-        # ذخیره HTML برای بررسی
-        html = await checkin_el.evaluate(
-            "(el) => el.outerHTML"
-        )
-
-        print("HTML:")
-        print(html)
-
-        await page.screenshot(
-            path="calendar_disabled.png",
-            full_page=True
-        )
-
-        await browser.close()
-        return
-
-    await checkin_el.click()
-
-    print("Check-in selected.")
-        await page.wait_for_timeout(1000)
-
-        # =========================================
-        # انتخاب خروج: 30 مرداد
-        # =========================================
-
-        print(
-            f"\nSelecting check-out: {CHECKOUT}"
-        )
-
-        checkout = page.locator(
-            f'[data-test="calendar-day-{CHECKOUT}"]'
-        )
-
-        print(
-            "Check-out elements:",
-            await checkout.count()
-        )
-
-        if await checkout.count() == 0:
-
-            print("ERROR: تاریخ خروج پیدا نشد")
-
-            await browser.close()
-            return
-
-        await checkout.first.click()
-
-        print("Check-out selected.")
-
-        # صبر برای محاسبه صورتحساب
-        await page.wait_for_timeout(2500)
-
-        # =========================================
-        # استخراج قیمت 28 مرداد
-        # =========================================
-
-        day28 = page.locator(
-            '[data-test="calendar-day-1405-05-28"]'
-        )
-
-        day28_text = ""
-
-        if await day28.count() > 0:
-
-            day28_text = (
-                await day28.first.inner_text()
-            ).strip()
-
-        price28 = normalize_number(
-            day28_text
-        )
-
-        # =========================================
-        # استخراج قیمت 29 مرداد
-        # =========================================
-
-        day29 = page.locator(
-            '[data-test="calendar-day-1405-05-29"]'
-        )
-
-        day29_text = ""
-
-        if await day29.count() > 0:
-
-            day29_text = (
-                await day29.first.inner_text()
-            ).strip()
-
-        price29 = normalize_number(
-            day29_text
-        )
-
-        # =========================================
-        # استخراج مجموع صورتحساب
-        # =========================================
-
-        body = await page.locator(
-            "body"
-        ).inner_text()
-
-        total_price = None
-
-        # ابتدا دنبال متن صورتحساب و مبلغ نزدیک آن می‌گردیم
-        lines = [
-            line.strip()
-            for line in body.splitlines()
-            if line.strip()
-        ]
-
-        for i, line in enumerate(lines):
-
-            if "صورتحساب" in line:
-
-                # چند خط بعد از صورتحساب را بررسی می‌کنیم
-                for candidate in lines[i:i + 8]:
-
-                    value = normalize_number(
-                        candidate
-                    )
-
-                    if value is not None and value >= 100000:
-
-                        # قیمت‌های روزانه را کنار می‌گذاریم
-                        if price28 and value == price28:
-                            continue
-
-                        if price29 and value == price29:
-                            continue
-
-                        total_price = value
                         break
 
-                if total_price:
-                    break
+                except Exception:
+                    pass
 
-        # اگر مجموع پیدا نشد، از جمع دو شب استفاده می‌کنیم
-        if total_price is None:
+            if not selected:
 
-            if price28 is not None and price29 is not None:
+                print(
+                    "WARNING: 4 نفر option "
+                    "was not selected."
+                )
 
-                total_price = price28 + price29
+            await page.wait_for_timeout(
+                1000
+            )
 
-        # =========================================
-        # مقایسه با قیمت قبلی
-        # =========================================
+            # =================================================
+            # مهم:
+            # دیگر تاریخ‌ها را کلیک نمی‌کنیم.
+            #
+            # مستقیماً قیمت تقویم را می‌خوانیم.
+            # =================================================
 
-        previous_prices = load_previous_prices()
+            print(
+                "\n===== READING CALENDAR PRICES ====="
+            )
 
-        price_changed = compare_prices(
-            previous_prices,
-            price28,
-            price29,
-            total_price
-        )
+            price_28 = await get_calendar_price(
+                page,
+                DATE_28
+            )
 
-        # ذخیره قیمت فعلی
-        save_current_prices(
-            price28,
-            price29,
-            total_price
-        )
+            price_29 = await get_calendar_price(
+                page,
+                DATE_29
+            )
 
+            if price_28 is None:
 
+                raise Exception(
+                    "Could not find price for "
+                    "28 Mordad."
+                )
 
-        
-        # =========================================
-        # گزارش نهایی
-        # =========================================
+            if price_29 is None:
+
+                raise Exception(
+                    "Could not find price for "
+                    "29 Mordad."
+                )
+
+            total = (
+                price_28 +
+                price_29
+            )
+
+            current = {
+                "room_code": ROOM_CODE,
+                "room_name": ROOM_NAME,
+                "guests": GUESTS,
+                "checkin": CHECKIN_DATE,
+                "checkout": CHECKOUT_DATE,
+                "price_28": price_28,
+                "price_29": price_29,
+                "total": total
+            }
+
+            # =================================================
+            # REPORT
+            # =================================================
+
+            print(
+                "\n========================================"
+            )
+
+            print(
+                "===== JAJIGA PRICE REPORT ====="
+            )
+
+            print(
+                f"اقامتگاه: {ROOM_NAME}"
+            )
+
+            print(
+                f"کد: {ROOM_CODE}"
+            )
+
+            print(
+                f"مهمان: {GUESTS} نفر"
+            )
+
+            print()
+
+            print(
+                f"28 مرداد: "
+                f"{format_price(price_28)} تومان"
+            )
+
+            print(
+                f"29 مرداد: "
+                f"{format_price(price_29)} تومان"
+            )
+
+            print()
+
+            print(
+                f"مجموع دو شب: "
+                f"{format_price(total)} تومان"
+            )
+
+            print(
+                "========================================"
+            )
+
+            # =================================================
+            # LOAD OLD PRICE
+            # =================================================
+
+            old = load_state()
+
+            # =================================================
+            # FIRST RUN
+            # =================================================
+
+            if old is None:
+
+                print(
+                    "\nNo previous price found."
+                )
+
+                print(
+                    "Saving initial price..."
+                )
+
+                save_state(
+                    price_28,
+                    price_29,
+                    total
+                )
+
+                print(
+                    "Initial price saved."
+                )
+
+            else:
+
+                old_total = old.get(
+                    "total"
+                )
+
+                old_price_28 = old.get(
+                    "price_28"
+                )
+
+                old_price_29 = old.get(
+                    "price_29"
+                )
+
+                # =============================================
+                # PRICE CHANGE?
+                # =============================================
+
+                changed = (
+                    old_total != total
+                    or
+                    old_price_28 != price_28
+                    or
+                    old_price_29 != price_29
+                )
+
+                if not changed:
+
+                    print(
+                        "\nNo price change."
+                    )
+
+                else:
+
+                    print(
+                        "\n🔔 PRICE CHANGE DETECTED"
+                    )
+
+                    message = (
+                        build_price_change_message(
+                            old,
+                            current
+                        )
+                    )
+
+                    print(
+                        "\n===== TELEGRAM MESSAGE ====="
+                    )
+
+                    print(
+                        message
+                    )
+
+                    print(
+                        "============================"
+                    )
+
+                    # =========================================
+                    # SEND TELEGRAM
+                    # =========================================
+
+                    send_telegram(
+                        message
+                    )
+
+                # =============================================
+                # ALWAYS SAVE LATEST PRICE
+                # =============================================
+
+                save_state(
+                    price_28,
+                    price_29,
+                    total
+                )
+
+                print(
+                    "\nLatest price saved."
+                )
+
+            # =================================================
+            # SCREENSHOT
+            # =================================================
+
+            try:
+
+                await page.screenshot(
+                    path="jajiga_calendar.png",
+                    full_page=True
+                )
+
+                print(
+                    "Screenshot saved: "
+                    "jajiga_calendar.png"
+                )
+
+            except Exception as e:
+
+                print(
+                    "Screenshot warning:",
+                    e
+                )
+
+    except Exception as e:
 
         print(
             "\n========================================"
         )
 
         print(
-            "===== JAJIGA PRICE REPORT ====="
+            "ERROR:"
         )
 
         print(
-            "اقامتگاه: ویلا لب دریا در بندرانزلی - کپورچال"
+            str(e)
         )
-
-        print(
-            "کد: 3159346"
-        )
-
-        print(
-            "مهمان: 4 نفر"
-        )
-
-        print()
-
-        if price28 is not None:
-
-            print(
-                f"28 مرداد: {price28:,} تومان"
-            )
-
-        else:
-
-            print(
-                "28 مرداد: پیدا نشد"
-            )
-
-        if price29 is not None:
-
-            print(
-                f"29 مرداد: {price29:,} تومان"
-            )
-
-        else:
-
-            print(
-                "29 مرداد: پیدا نشد"
-            )
-
-        print()
-
-        if total_price is not None:
-
-            print(
-                f"مجموع دو شب: {total_price:,} تومان"
-            )
-
-        else:
-
-            print(
-                "مجموع دو شب: پیدا نشد"
-            )
 
         print(
             "========================================"
         )
 
-        # =========================================
-        # Screenshot
-        # =========================================
+        raise
 
-        await page.screenshot(
-            path="booking_28_29.png",
-            full_page=True
-        )
+    finally:
 
-        print(
-            "\nScreenshot saved: booking_28_29.png"
-        )
+        if browser:
 
-        await browser.close()
+            try:
 
+                await browser.close()
+
+            except Exception:
+                pass
+
+
+# =========================================================
+# ENTRY POINT
+# =========================================================
 
 if __name__ == "__main__":
 
