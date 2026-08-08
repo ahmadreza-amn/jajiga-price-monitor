@@ -1,8 +1,32 @@
 import asyncio
+import re
 from playwright.async_api import async_playwright
 
 
 URL = "https://www.jajiga.com/room/3159346"
+
+CHECKIN = "1405-05-28"
+CHECKOUT = "1405-05-30"
+
+
+def normalize_number(text):
+    """تبدیل ارقام فارسی/عربی و جداکننده‌ها به عدد"""
+    translation = str.maketrans(
+        "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٬",
+        "01234567890123456789,"
+    )
+
+    text = text.translate(translation)
+
+    text = text.replace(",", "")
+    text = text.replace(" ", "")
+
+    numbers = re.findall(r"\d+", text)
+
+    if not numbers:
+        return None
+
+    return int("".join(numbers))
 
 
 async def main():
@@ -46,7 +70,12 @@ async def main():
             await guest_input.count()
         )
 
-        await guest_input.click()
+        if await guest_input.count() == 0:
+            print("ERROR: guest input پیدا نشد")
+            await browser.close()
+            return
+
+        await guest_input.first.click()
 
         await page.wait_for_timeout(500)
 
@@ -59,9 +88,11 @@ async def main():
 
         for i in range(await options.count()):
 
-            if await options.nth(i).is_visible():
+            option = options.nth(i)
 
-                await options.nth(i).click()
+            if await option.is_visible():
+
+                await option.click()
 
                 selected = True
 
@@ -70,21 +101,24 @@ async def main():
                 break
 
         if not selected:
-            print("ERROR: 4 نفر پیدا نشد")
+
+            print("ERROR: گزینه 4 نفر پیدا نشد")
+
+            await browser.close()
+            return
 
         await page.wait_for_timeout(1000)
 
         # =========================================
-        # انتخاب تاریخ ورود
-        # 28 مرداد 1405
+        # انتخاب ورود: 28 مرداد
         # =========================================
 
         print(
-            "\nSelecting check-in: 1405-05-28"
+            f"\nSelecting check-in: {CHECKIN}"
         )
 
         checkin = page.locator(
-            '[data-test="calendar-day-1405-05-28"]'
+            f'[data-test="calendar-day-{CHECKIN}"]'
         )
 
         print(
@@ -94,31 +128,27 @@ async def main():
 
         if await checkin.count() == 0:
 
-            print(
-                "ERROR: تاریخ 28 مرداد پیدا نشد"
-            )
+            print("ERROR: تاریخ ورود پیدا نشد")
 
-        else:
+            await browser.close()
+            return
 
-            await checkin.first.click()
+        await checkin.first.click()
 
-            print(
-                "Check-in selected."
-            )
+        print("Check-in selected.")
 
         await page.wait_for_timeout(1000)
 
         # =========================================
-        # انتخاب تاریخ خروج
-        # 30 مرداد 1405
+        # انتخاب خروج: 30 مرداد
         # =========================================
 
         print(
-            "\nSelecting check-out: 1405-05-30"
+            f"\nSelecting check-out: {CHECKOUT}"
         )
 
         checkout = page.locator(
-            '[data-test="calendar-day-1405-05-30"]'
+            f'[data-test="calendar-day-{CHECKOUT}"]'
         )
 
         print(
@@ -128,149 +158,175 @@ async def main():
 
         if await checkout.count() == 0:
 
-            print(
-                "ERROR: تاریخ 30 مرداد پیدا نشد"
-            )
+            print("ERROR: تاریخ خروج پیدا نشد")
 
-        else:
+            await browser.close()
+            return
 
-            await checkout.first.click()
+        await checkout.first.click()
 
-            print(
-                "Check-out selected."
-            )
+        print("Check-out selected.")
 
-        await page.wait_for_timeout(2000)
+        # صبر برای محاسبه صورتحساب
+        await page.wait_for_timeout(2500)
 
         # =========================================
-        # بررسی Input ها
+        # استخراج قیمت 28 مرداد
         # =========================================
 
-        print(
-            "\n===== DATE INPUTS ====="
+        day28 = page.locator(
+            '[data-test="calendar-day-1405-05-28"]'
         )
 
-        inputs = page.locator("input")
+        day28_text = ""
 
-        input_count = await inputs.count()
+        if await day28.count() > 0:
 
-        print(
-            "Input count:",
-            input_count
+            day28_text = (
+                await day28.first.inner_text()
+            ).strip()
+
+        price28 = normalize_number(
+            day28_text
         )
 
-        for i in range(input_count):
-
-            try:
-
-                el = inputs.nth(i)
-
-                value = await el.input_value()
-
-                placeholder = await el.get_attribute(
-                    "placeholder"
-                )
-
-                data_test = await el.get_attribute(
-                    "data-test"
-                )
-
-                print(
-                    f"{i}: "
-                    f"data-test={data_test} "
-                    f"placeholder={placeholder} "
-                    f"value={value}"
-                )
-
-            except Exception:
-                pass
-
         # =========================================
-        # بررسی قیمت ها و صورتحساب
+        # استخراج قیمت 29 مرداد
         # =========================================
 
-        print(
-            "\n===== PRICE INFORMATION ====="
+        day29 = page.locator(
+            '[data-test="calendar-day-1405-05-29"]'
         )
+
+        day29_text = ""
+
+        if await day29.count() > 0:
+
+            day29_text = (
+                await day29.first.inner_text()
+            ).strip()
+
+        price29 = normalize_number(
+            day29_text
+        )
+
+        # =========================================
+        # استخراج مجموع صورتحساب
+        # =========================================
 
         body = await page.locator(
             "body"
         ).inner_text()
 
-        for line in body.splitlines():
+        total_price = None
 
-            line = line.strip()
+        # ابتدا دنبال متن صورتحساب و مبلغ نزدیک آن می‌گردیم
+        lines = [
+            line.strip()
+            for line in body.splitlines()
+            if line.strip()
+        ]
 
-            if (
-                "تومان" in line
-                or "صورتحساب" in line
-                or "جمع" in line
-                or "هزینه" in line
-                or "تخفیف" in line
-            ):
+        for i, line in enumerate(lines):
 
-                print(
-                    repr(line)
-                )
+            if "صورتحساب" in line:
 
-        # =========================================
-        # بررسی data-test های رزرو
-        # =========================================
+                # چند خط بعد از صورتحساب را بررسی می‌کنیم
+                for candidate in lines[i:i + 8]:
 
-        print(
-            "\n===== BOOKING DATA-TEST ====="
-        )
-
-        elements = page.locator(
-            "[data-test]"
-        )
-
-        element_count = await elements.count()
-
-        print(
-            "Data-test count:",
-            element_count
-        )
-
-        for i in range(element_count):
-
-            try:
-
-                el = elements.nth(i)
-
-                data_test = await el.get_attribute(
-                    "data-test"
-                )
-
-                text = (
-                    await el.inner_text()
-                )
-
-                text = text.strip()
-
-                text = text.replace(
-                    "\n",
-                    " | "
-                )
-
-                if (
-                    "book" in data_test.lower()
-                    or
-                    "price" in data_test.lower()
-                    or
-                    "total" in data_test.lower()
-                    or
-                    "date" in data_test.lower()
-                    or
-                    "cost" in data_test.lower()
-                ):
-
-                    print(
-                        f"{data_test}: {text[:500]}"
+                    value = normalize_number(
+                        candidate
                     )
 
-            except Exception:
-                pass
+                    if value is not None and value >= 100000:
+
+                        # قیمت‌های روزانه را کنار می‌گذاریم
+                        if price28 and value == price28:
+                            continue
+
+                        if price29 and value == price29:
+                            continue
+
+                        total_price = value
+                        break
+
+                if total_price:
+                    break
+
+        # اگر مجموع پیدا نشد، از جمع دو شب استفاده می‌کنیم
+        if total_price is None:
+
+            if price28 is not None and price29 is not None:
+
+                total_price = price28 + price29
+
+        # =========================================
+        # گزارش نهایی
+        # =========================================
+
+        print(
+            "\n========================================"
+        )
+
+        print(
+            "===== JAJIGA PRICE REPORT ====="
+        )
+
+        print(
+            "اقامتگاه: ویلا لب دریا در بندرانزلی - کپورچال"
+        )
+
+        print(
+            "کد: 3159346"
+        )
+
+        print(
+            "مهمان: 4 نفر"
+        )
+
+        print()
+
+        if price28 is not None:
+
+            print(
+                f"28 مرداد: {price28:,} تومان"
+            )
+
+        else:
+
+            print(
+                "28 مرداد: پیدا نشد"
+            )
+
+        if price29 is not None:
+
+            print(
+                f"29 مرداد: {price29:,} تومان"
+            )
+
+        else:
+
+            print(
+                "29 مرداد: پیدا نشد"
+            )
+
+        print()
+
+        if total_price is not None:
+
+            print(
+                f"مجموع دو شب: {total_price:,} تومان"
+            )
+
+        else:
+
+            print(
+                "مجموع دو شب: پیدا نشد"
+            )
+
+        print(
+            "========================================"
+        )
 
         # =========================================
         # Screenshot
@@ -285,12 +341,9 @@ async def main():
             "\nScreenshot saved: booking_28_29.png"
         )
 
-        print(
-            "\n===== FINISHED ====="
-        )
-
         await browser.close()
 
 
 if __name__ == "__main__":
+
     asyncio.run(main())
