@@ -2,8 +2,10 @@ name: Jajiga Price Monitor
 
 on:
   schedule:
+    # اجرا هر 30 دقیقه
     - cron: "*/30 * * * *"
 
+  # امکان اجرای دستی از GitHub
   workflow_dispatch:
 
 permissions:
@@ -15,22 +17,35 @@ jobs:
 
     steps:
 
+      # ==========================================
+      # دریافت کدهای Repository
+      # ==========================================
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # ==========================================
+      # نصب Python
+      # ==========================================
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
+      # ==========================================
+      # نصب وابستگی‌ها
+      # ==========================================
       - name: Install dependencies
         run: |
-          pip install playwright requests
+          python -m pip install --upgrade pip
+          pip install playwright
           playwright install chromium
           playwright install-deps chromium
 
+      # ==========================================
+      # اجرای مانیتور
+      # ==========================================
       - name: Run Jajiga monitor
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -38,16 +53,37 @@ jobs:
         run: |
           python jajiga_monitor.py
 
+      # ==========================================
+      # ذخیره price_state.json
+      # برای اینکه اجرای بعدی قیمت قبلی را بداند
+      # ==========================================
       - name: Save price state
+        if: always()
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f price_state.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add price_state.json
+            git add price_state.json
 
-          if git diff --cached --quiet; then
-            echo "No state change."
+            if git diff --cached --quiet; then
+              echo "No price state changes to commit."
+            else
+              git commit -m "Update Jajiga price state"
+              git push
+            fi
           else
-            git commit -m "Update Jajiga price state"
-            git push
+            echo "price_state.json not found."
           fi
+
+      # ==========================================
+      # ذخیره Screenshot در صورت نیاز به بررسی
+      # ==========================================
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jajiga-calendar
+          path: jajiga_calendar.png
+          if-no-files-found: ignore
+          retention-days: 3
