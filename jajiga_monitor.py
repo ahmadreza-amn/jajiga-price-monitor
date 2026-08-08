@@ -1,5 +1,7 @@
 import asyncio
 import re
+import json
+import os
 from playwright.async_api import async_playwright
 
 
@@ -8,6 +10,192 @@ URL = "https://www.jajiga.com/room/3159346"
 CHECKIN = "1405-05-28"
 CHECKOUT = "1405-05-30"
 
+STATE_FILE = "price_state.json"
+
+
+def load_previous_prices():
+
+    if not os.path.exists(STATE_FILE):
+
+        return {
+            "price_28": None,
+            "price_29": None,
+            "total": None
+        }
+
+    try:
+
+        with open(
+            STATE_FILE,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            return json.load(f)
+
+    except Exception:
+
+        return {
+            "price_28": None,
+            "price_29": None,
+            "total": None
+        }
+
+
+def save_current_prices(
+    price_28,
+    price_29,
+    total
+):
+
+    data = {
+        "price_28": price_28,
+        "price_29": price_29,
+        "total": total
+    }
+
+    with open(
+        STATE_FILE,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            data,
+            f,
+            ensure_ascii=False,
+            indent=2
+        )
+
+
+def format_price(value):
+
+    if value is None:
+        return "نامشخص"
+
+    return f"{value:,} تومان"
+
+
+def compare_prices(
+    previous,
+    current_28,
+    current_29,
+    current_total
+):
+
+    old_28 = previous.get("price_28")
+    old_29 = previous.get("price_29")
+    old_total = previous.get("total")
+
+    # اجرای اول است؛ قیمت قبلی نداریم
+    if (
+        old_28 is None
+        or old_29 is None
+        or old_total is None
+    ):
+
+        print(
+            "\nاولین اجرای ربات است؛"
+            " قیمت فعلی به عنوان قیمت پایه ذخیره می‌شود."
+        )
+
+        return False
+
+    changed = (
+        old_28 != current_28
+        or old_29 != current_29
+        or old_total != current_total
+    )
+
+    if not changed:
+
+        print(
+            "\nقیمت‌ها نسبت به اجرای قبلی تغییری نکرده‌اند."
+        )
+
+        return False
+
+    print(
+        "\n🔔 PRICE CHANGE DETECTED"
+    )
+
+    print(
+        f"مجموع قبلی: {format_price(old_total)}"
+    )
+
+    print(
+        f"مجموع جدید: {format_price(current_total)}"
+    )
+
+    total_difference = current_total - old_total
+
+    if total_difference < 0:
+
+        print(
+            f"کاهش قیمت: {format_price(abs(total_difference))}"
+        )
+
+    elif total_difference > 0:
+
+        print(
+            f"افزایش قیمت: {format_price(total_difference)}"
+        )
+
+    print()
+
+    if old_28 != current_28:
+
+        difference_28 = current_28 - old_28
+
+        print(
+            f"28 مرداد قدیم: {format_price(old_28)}"
+        )
+
+        print(
+            f"28 مرداد جدید: {format_price(current_28)}"
+        )
+
+        if difference_28 < 0:
+
+            print(
+                f"کاهش 28 مرداد: "
+                f"{format_price(abs(difference_28))}"
+            )
+
+        else:
+
+            print(
+                f"افزایش 28 مرداد: "
+                f"{format_price(difference_28)}"
+            )
+
+    if old_29 != current_29:
+
+        difference_29 = current_29 - old_29
+
+        print(
+            f"29 مرداد قدیم: {format_price(old_29)}"
+        )
+
+        print(
+            f"29 مرداد جدید: {format_price(current_29)}"
+        )
+
+        if difference_29 < 0:
+
+            print(
+                f"کاهش 29 مرداد: "
+                f"{format_price(abs(difference_29))}"
+            )
+
+        else:
+
+            print(
+                f"افزایش 29 مرداد: "
+                f"{format_price(difference_29)}"
+            )
+
+    return True
 
 def normalize_number(text):
     """استخراج مبلغ از متن تقویم جاجیگا"""
@@ -272,6 +460,29 @@ async def main():
 
                 total_price = price28 + price29
 
+        # =========================================
+        # مقایسه با قیمت قبلی
+        # =========================================
+
+        previous_prices = load_previous_prices()
+
+        price_changed = compare_prices(
+            previous_prices,
+            price28,
+            price29,
+            total_price
+        )
+
+        # ذخیره قیمت فعلی
+        save_current_prices(
+            price28,
+            price29,
+            total_price
+        )
+
+
+
+        
         # =========================================
         # گزارش نهایی
         # =========================================
