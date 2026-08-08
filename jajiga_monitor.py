@@ -219,10 +219,7 @@ async def main():
                     "data-test"
                 )
 
-                text = (
-                    await el.inner_text()
-                ).strip()
-                .replace("\n", " | ")
+               text = (await el.inner_text()).strip().replace("\n", " | ")
 
                 if (
                     "book" in data_test.lower()
