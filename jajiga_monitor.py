@@ -10,7 +10,8 @@ CHECKOUT = "1405-05-30"
 
 
 def normalize_number(text):
-    """تبدیل ارقام فارسی/عربی و جداکننده‌ها به عدد"""
+    """استخراج مبلغ از متن تقویم جاجیگا"""
+
     translation = str.maketrans(
         "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٬",
         "01234567890123456789,"
@@ -18,15 +19,26 @@ def normalize_number(text):
 
     text = text.translate(translation)
 
-    text = text.replace(",", "")
-    text = text.replace(" ", "")
+    # متن تقویم معمولاً چیزی شبیه:
+    # 28
+    # 5,000,000
+    #
+    # بنابراین باید آخرین عدد را برداریم،
+    # نه اینکه همه اعداد را به هم بچسبانیم.
 
-    numbers = re.findall(r"\d+", text)
+    numbers = re.findall(
+        r"\d[\d,]*",
+        text
+    )
 
     if not numbers:
         return None
 
-    return int("".join(numbers))
+    value = numbers[-1]
+
+    value = value.replace(",", "")
+
+    return int(value)
 
 
 async def main():
