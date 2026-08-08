@@ -263,25 +263,71 @@ async def get_calendar_price(page, date):
             )
 
             # Find numbers containing separators.
-            matches = re.findall(
-                r"[\d۰-۹٠-٩][\d۰-۹٠-٩٬,.\s]*",
-                raw_text
+            # متن تقویم معمولاً به شکل زیر است:
+# 28
+# 5٬000٬000
+
+lines = [
+    line.strip()
+    for line in raw_text.splitlines()
+    if line.strip()
+]
+
+# خط اول شماره روز است
+# خط دوم قیمت است
+if len(lines) >= 2:
+
+    price = parse_price(lines[1])
+
+    if price is not None:
+
+        print(
+            f"PRICE FOUND {date}: "
+            f"{format_number(price)}"
+        )
+
+        return price
+
+# Fallback:
+# اگر ساختار متن تغییر کرده بود، قیمت را
+# از span داخل calendar-day استخراج می‌کنیم.
+
+try:
+
+    price_elements = element.locator(
+        "span"
+    )
+
+    span_count = await price_elements.count()
+
+    for j in range(span_count):
+
+        span = price_elements.nth(j)
+
+        text = (
+            await span.inner_text()
+        ).strip()
+
+        price = parse_price(text)
+
+        if (
+            price is not None
+            and price >= 100000
+        ):
+
+            print(
+                f"PRICE FOUND {date}: "
+                f"{format_number(price)}"
             )
 
-            # Prefer a number that is large enough to
-            # reasonably be a room price.
-            for match in matches:
+            return price
 
-                price = parse_price(match)
+except Exception as e:
 
-                if price is not None and price >= 100000:
-
-                    print(
-                        f"PRICE FOUND {date}: "
-                        f"{format_number(price)}"
-                    )
-
-                    return price
+    print(
+        f"WARNING fallback price "
+        f"extraction failed: {e}"
+    )
 
         except Exception as e:
 
